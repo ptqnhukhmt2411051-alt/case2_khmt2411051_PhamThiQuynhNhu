@@ -290,7 +290,7 @@ class TaskService {
     }
   }
 
-  // Xóa công việc.
+  // Xóa công việc
   Future<void> deleteTask(String taskId) async {
     try {
       final response = await http.delete(
@@ -298,9 +298,9 @@ class TaskService {
         headers: await _getHeaders(),
       );
 
-      if (response.statusCode != 200) {
-        final data = _decodeResponse(response);
+      final data = _decodeResponse(response);
 
+      if (response.statusCode != 200) {
         throw Exception(
           data is Map
               ? data['message'] ?? 'Không thể xóa công việc'

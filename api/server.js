@@ -1,5 +1,3 @@
-
-// PHẢI nạp .env trước khi import các file khác
 require('dotenv').config();
 
 const express = require('express');
@@ -27,7 +25,6 @@ app.get('/', (req, res) => {
 async function startServer() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
-
     console.log('Ket noi MongoDB thanh cong!');
 
     const port = process.env.PORT || 3000;
@@ -42,3 +39,4 @@ async function startServer() {
 }
 
 startServer();
+
