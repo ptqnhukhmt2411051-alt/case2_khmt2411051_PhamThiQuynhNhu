@@ -1,6 +1,7 @@
 const {
   sendAssignmentEmail,
   sendShareInvitationEmail,
+  sendTaskUpdateEmail,
 } = require('../config/email');
 
 
@@ -299,28 +300,16 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
      }
    });
 // =====================================================
-// CAP NHAT QUYEN CHIA SE
-// PUT /api/tasks/:id/share-permission
-// Body: { email: "user@gmail.com", permission: "editor" }
+// CAP NHAT CONG VIEC VA GUI EMAIL KHI THAY DOI THONG TIN
+// PUT /api/tasks/:id
 // =====================================================
-router.put('/:id/share-permission', authMiddleware, async (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { email, permission } = req.body;
 
     if (!isValidId(id)) {
       return res.status(400).json({
         message: 'ID cong viec khong hop le'
-      });
-    }
-
-    if (
-      typeof email !== 'string' ||
-      !email.trim() ||
-      !['viewer', 'editor'].includes(permission)
-    ) {
-      return res.status(400).json({
-        message: 'Email hoac quyen chia se khong hop le'
       });
     }
 
@@ -332,66 +321,227 @@ router.put('/:id/share-permission', authMiddleware, async (req, res) => {
       });
     }
 
+    // Chi nguoi tao moi duoc cap nhat
     if (String(task.createdBy) !== String(req.userId)) {
       return res.status(403).json({
-        message: 'Chi nguoi tao moi duoc thay doi quyen chia se'
+        message: 'Chi nguoi tao moi duoc cap nhat cong viec'
       });
     }
 
-    const user = await User.findOne({
-      email: email.trim().toLowerCase()
-    }).select('_id name email');
+    // Luu thong tin cu truoc khi cap nhat
+    const oldData = {
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      startDate: task.startDate
+        ? new Date(task.startDate).getTime()
+        : null,
+      dueDate: task.dueDate
+        ? new Date(task.dueDate).getTime()
+        : null
+    };
 
-    if (!user) {
-      return res.status(404).json({
-        message: 'Khong tim thay tai khoan'
-      });
-    }
+    // Cac truong duoc phep cap nhat
+    const allowedFields = [
+      'title',
+      'description',
+      'assignedTo',
+      'status',
+      'priority',
+      'startDate',
+      'dueDate'
+    ];
 
-    const isShared = (task.sharedWith || []).some(
-      item => getUserId(item) === String(user._id)
-    );
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        task[field] = req.body[field];
+      }
+    });
 
-    if (!isShared) {
+    // Kiem tra ten cong viec
+    if (typeof task.title !== 'string' || !task.title.trim()) {
       return res.status(400).json({
-        message: 'Nguoi nay chua duoc chia se cong viec'
+        message: 'Ten cong viec khong duoc de trong'
       });
     }
 
-    if (!task.sharedPermissions) {
-      task.sharedPermissions = [];
-    }
+    // Kiem tra trang thai
+    const validStatuses = [
+      'todo',
+      'in_progress',
+      'completed'
+    ];
 
-    const existingPermission = task.sharedPermissions.find(
-      item => getUserId(item.user) === String(user._id)
-    );
-
-    if (existingPermission) {
-      existingPermission.permission = permission;
-    } else {
-      task.sharedPermissions.push({
-        user: user._id,
-        permission
+    if (!validStatuses.includes(task.status)) {
+      return res.status(400).json({
+        message: 'Trang thai cong viec khong hop le'
       });
     }
 
+    // Kiem tra muc do uu tien
+    const validPriorities = [
+      'low',
+      'medium',
+      'high'
+    ];
+
+    if (!validPriorities.includes(task.priority)) {
+      return res.status(400).json({
+        message: 'Muc do uu tien khong hop le'
+      });
+    }
+
+    // Kiem tra nguoi duoc giao
+    if (task.assignedTo && !isValidId(task.assignedTo)) {
+      return res.status(400).json({
+        message: 'ID nguoi duoc giao khong hop le'
+      });
+    }
+
+    // Luu thay doi vao MongoDB
     await task.save();
 
-    const result = await populateTask(Task.findById(id));
+    // Lay thong tin sau khi cap nhat
+    const result = await populateTask(
+      Task.findById(id)
+    );
+
+    // So sanh thong tin cu va moi
+    const changes = [];
+
+    if (oldData.title !== task.title) {
+      changes.push({
+        field: 'title',
+        label: 'Tên công việc',
+        oldValue: oldData.title,
+        newValue: task.title
+      });
+    }
+
+    if (oldData.description !== task.description) {
+      changes.push({
+        field: 'description',
+        label: 'Mô tả công việc',
+        oldValue: oldData.description || 'Không có',
+        newValue: task.description || 'Không có'
+      });
+    }
+
+    if (oldData.status !== task.status) {
+      changes.push({
+        field: 'status',
+        label: 'Trạng thái',
+        oldValue: oldData.status,
+        newValue: task.status
+      });
+    }
+
+    if (oldData.priority !== task.priority) {
+      changes.push({
+        field: 'priority',
+        label: 'Mức độ ưu tiên',
+        oldValue: oldData.priority,
+        newValue: task.priority
+      });
+    }
+
+    const newStartDate = task.startDate
+      ? new Date(task.startDate).getTime()
+      : null;
+
+    if (oldData.startDate !== newStartDate) {
+      changes.push({
+        field: 'startDate',
+        label: 'Ngày bắt đầu',
+        oldValue: oldData.startDate,
+        newValue: newStartDate
+      });
+    }
+
+    const newDueDate = task.dueDate
+      ? new Date(task.dueDate).getTime()
+      : null;
+
+    if (oldData.dueDate !== newDueDate) {
+      changes.push({
+        field: 'dueDate',
+        label: 'Hạn hoàn thành',
+        oldValue: oldData.dueDate,
+        newValue: newDueDate
+      });
+    }
+
+    // Neu co thay doi quan trong thi gui email
+    let emailSentCount = 0;
+    let emailTotal = 0;
+
+    if (changes.length > 0) {
+      // Lay tat ca nguoi duoc giao va nguoi duoc chia se
+      const recipientIds = [
+        ...(task.assignedUsers || []),
+        ...(task.assignedTo ? [task.assignedTo] : []),
+        ...(task.sharedWith || []),
+        ...(task.sharedPermissions || []).map(
+          item => item.user
+        )
+      ]
+        .filter(Boolean)
+        .map(item => getUserId(item));
+
+      // Loai bo ID trung lap va nguoi dang cap nhat
+      const uniqueRecipientIds = [
+        ...new Set(recipientIds)
+      ].filter(
+        userId => userId !== String(req.userId)
+      );
+
+      // Tim email nguoi nhan
+      const recipients = await User.find({
+        _id: { $in: uniqueRecipientIds }
+      }).select('name email');
+
+      emailTotal = recipients.length;
+
+      // Gui email, loi gui email khong lam mat thay doi da luu
+      const emailResults = await Promise.allSettled(
+        recipients.map(user =>
+          sendTaskUpdateEmail(
+            user.email,
+            result,
+            changes
+          )
+        )
+      );
+
+      emailSentCount = emailResults.filter(
+        item =>
+          item.status === 'fulfilled' &&
+          item.value === true
+      ).length;
+
+      console.log(
+        `Cap nhat cong viec ${id}: da gui ${emailSentCount}/${emailTotal} email`
+      );
+    }
 
     return res.status(200).json({
-      message: 'Cap nhat quyen chia se thanh cong',
-      task: result
+      message: 'Cap nhat cong viec thanh cong',
+      task: result,
+      changes,
+      emailSentCount,
+      emailTotal
     });
 
   } catch (error) {
+    console.error('LOI CAP NHAT CONG VIEC:', error);
+
     return res.status(500).json({
-      message: 'Loi cap nhat quyen chia se',
+      message: 'Loi cap nhat cong viec',
       error: error.message
     });
   }
 });
-
 
 // TAO CONG VIEC MOI
 // POST /api/tasks
