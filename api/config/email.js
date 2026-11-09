@@ -191,6 +191,55 @@ const sendTaskUpdateEmail = async (
     return false;
   }
 };
+// =====================================================
+// GUI EMAIL KHI CONG VIEC HOAN THANH
+// =====================================================
+const sendTaskCompletedEmail = async (recipientEmail, task) => {
+  try {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
+      throw new Error('Thieu cau hinh email trong file .env');
+    }
+
+    if (!recipientEmail) {
+      throw new Error('Email nguoi nhan khong hop le');
+    }
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: recipientEmail,
+      subject: '[Task Manager] Cong viec da hoan thanh',
+      text: [
+        'Xin chao!',
+        '',
+        'Mot cong viec ma ban tham gia da duoc danh dau la HOAN THANH.',
+        '',
+        'Ten cong viec: ' + (task.title || 'Khong co'),
+        'Mo ta: ' + (task.description || 'Khong co'),
+        'Han hoan thanh: ' + (
+          task.dueDate
+            ? new Date(task.dueDate).toLocaleDateString('vi-VN')
+            : 'Chua co'
+        ),
+        '',
+        'Hay dang nhap Task Manager de xem chi tiet.',
+        '',
+        'Tran trong,',
+        'Task Manager'
+      ].join('\n')
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    console.log('Da gui email thong bao hoan thanh den:', recipientEmail);
+    return true;
+  } catch (error) {
+    console.error(
+      'Loi gui email thong bao hoan thanh den ' + recipientEmail + ':',
+      error.message
+    );
+    return false;
+  }
+};
 
 // =====================================================
 // XUAT CAC HAM DE task.js SU DUNG
@@ -199,4 +248,5 @@ module.exports = {
   sendAssignmentEmail,
   sendShareInvitationEmail,
   sendTaskUpdateEmail,
+  sendTaskCompletedEmail,
 };

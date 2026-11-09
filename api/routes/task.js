@@ -2,6 +2,7 @@ const {
   sendAssignmentEmail,
   sendShareInvitationEmail,
   sendTaskUpdateEmail,
+  sendTaskCompletedEmail,
 } = require('../config/email');
 
 
@@ -108,7 +109,8 @@ router.get('/users/search', authMiddleware, async (req, res) => {
 // Body: { emails: [], permission: 'viewer' }
 
 
-// C3 - CHIA SE CONG VIEC VA GUI EMAIL MOI
+// =====================================================
+// C3 - CHIA SE CONG VIEC CHO NHIEU NGUOI
 // POST /api/tasks/:id/share
 // Body: { emails: [], permission: 'viewer' | 'editor' }
 // =====================================================
@@ -117,28 +119,24 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
     const { id } = req.params;
     const { emails, permission = 'viewer' } = req.body;
 
-    // Kiem tra ID
     if (!isValidId(id)) {
       return res.status(400).json({
         message: 'ID cong viec khong hop le'
       });
     }
 
-    // Kiem tra danh sach email
     if (!Array.isArray(emails) || emails.length === 0) {
       return res.status(400).json({
         message: 'Vui long nhap email nguoi can chia se'
       });
     }
 
-    // Kiem tra quyen
     if (!['viewer', 'editor'].includes(permission)) {
       return res.status(400).json({
         message: 'Quyen chia se khong hop le'
       });
     }
 
-    // Chuan hoa email
     const normalizedEmails = [
       ...new Set(
         emails
@@ -154,7 +152,6 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
       });
     }
 
-    // Tim cong viec
     const task = await Task.findById(id);
 
     if (!task) {
@@ -163,14 +160,12 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
       });
     }
 
-    // Chi nguoi tao moi duoc chia se
-    if (String(task.createdBy) !== String(req.userId)) {
+    if (getUserId(task.createdBy) !== String(req.userId)) {
       return res.status(403).json({
         message: 'Chi nguoi tao moi duoc chia se cong viec'
       });
     }
 
-    // Tim nguoi chia se
     const creator = await User.findById(req.userId).select('email');
 
     if (!creator) {
@@ -179,46 +174,42 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
       });
     }
 
-    if (
-      normalizedEmails.includes(
-        (creator.email || '').trim().toLowerCase()
-      )
-    ) {
+    if (normalizedEmails.includes(
+      (creator.email || '').trim().toLowerCase()
+    )) {
       return res.status(400).json({
         message: 'Khong the chia se cong viec cho chinh minh'
       });
     }
 
-    // Tim nguoi nhan
     const recipients = await User.find({
       email: { $in: normalizedEmails }
     }).select('_id name email');
 
-    if (recipients.length !== normalizedEmails.length) {
-      const foundEmails = recipients.map(
-        user => user.email.trim().toLowerCase()
-      );
+    const foundEmails = recipients.map(user =>
+      (user.email || '').trim().toLowerCase()
+    );
 
+    const notFoundEmails = normalizedEmails.filter(
+      email => !foundEmails.includes(email)
+    );
+
+    if (notFoundEmails.length > 0) {
       return res.status(404).json({
         message: 'Mot hoac nhieu email khong ton tai',
-        notFoundEmails: normalizedEmails.filter(
-          email => !foundEmails.includes(email)
-        )
+        notFoundEmails
       });
     }
 
-    // Khoi tao danh sach chia se
-    if (!task.sharedWith) {
+    if (!Array.isArray(task.sharedWith)) {
       task.sharedWith = [];
     }
 
-    if (!task.sharedPermissions) {
+    if (!Array.isArray(task.sharedPermissions)) {
       task.sharedPermissions = [];
     }
 
     let addedCount = 0;
-
-    // Chi gui email cho nguoi moi duoc chia se
     const newlySharedUsers = [];
 
     for (const user of recipients) {
@@ -230,11 +221,10 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
 
       if (!alreadyShared) {
         task.sharedWith.push(user._id);
-        newlySharedUsers.push(user);
         addedCount++;
+        newlySharedUsers.push(user);
       }
 
-      // Cap nhat hoac them quyen
       const existingPermission = task.sharedPermissions.find(
         item => getUserId(item.user) === userId
       );
@@ -249,58 +239,43 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
       }
     }
 
-    // Luu cong viec
     await task.save();
 
-    // Gui email moi cho nguoi duoc chia se
-    // Gui email cho tat ca nguoi nhan
-       const emailResults = await Promise.allSettled(
-         recipients.map(user =>
-           sendShareInvitationEmail(
-             user.email,
-             task,
-             permission
-           )
-         )
-       );
+    const result = await populateTask(Task.findById(id));
 
-       const emailSentCount = emailResults.filter(
-         result =>
-           result.status === 'fulfilled' &&
-           result.value === true
-       ).length;
+    // Gui email moi cho nguoi duoc chia se lan dau
+    const emailResults = await Promise.allSettled(
+      newlySharedUsers.map(user =>
+        sendShareInvitationEmail(user.email, result, permission)
+      )
+    );
 
-       const emailTotal = recipients.length;
+    const emailSentCount = emailResults.filter(
+      item =>
+        item.status === 'fulfilled' &&
+        item.value === true
+    ).length;
 
-       // Lay lai cong viec
-       const result = await populateTask(
-         Task.findById(id)
-       );
+    return res.status(200).json({
+      message: 'Chia se cong viec thanh cong',
+      addedCount,
+      sharedCount: result.sharedWith.length,
+      emailSentCount,
+      emailTotal: newlySharedUsers.length,
+      task: result
+    });
 
-       console.log(
-         `Chia se cong viec ${id}: da gui ${emailSentCount}/${emailTotal} email`
-       );
+  } catch (error) {
+    console.error('LOI CHIA SE CONG VIEC:', error);
 
-       return res.status(200).json({
-         message: 'Chia se cong viec thanh cong',
-         addedCount,
-         sharedCount: result.sharedWith.length,
-         emailSentCount,
-         emailTotal,
-         task: result
-       });
-
-     } catch (error) {
-       console.error('LOI CHIA SE CONG VIEC:', error);
-
-       return res.status(500).json({
-         message: 'Loi chia se cong viec',
-         error: error.message
-       });
-     }
-   });
+    return res.status(500).json({
+      message: 'Loi chia se cong viec',
+      error: error.message
+    });
+  }
+});
 // =====================================================
-// CAP NHAT CONG VIEC VA GUI EMAIL KHI THAY DOI THONG TIN
+// CAP NHAT CONG VIEC VA GUI EMAIL KHI THAY DOI
 // PUT /api/tasks/:id
 // =====================================================
 router.put('/:id', authMiddleware, async (req, res) => {
@@ -321,19 +296,25 @@ router.put('/:id', authMiddleware, async (req, res) => {
       });
     }
 
-    // Chi nguoi tao moi duoc cap nhat
-    if (String(task.createdBy) !== String(req.userId)) {
+    // Kiem tra quyen cap nhat
+    const isOwner =
+      getUserId(task.createdBy) === String(req.userId);
+
+    const permission = getTaskPermission(task, req.userId);
+
+    if (!isOwner && permission !== 'editor') {
       return res.status(403).json({
-        message: 'Chi nguoi tao moi duoc cap nhat cong viec'
+        message: 'Ban khong co quyen chinh sua cong viec'
       });
     }
 
-    // Luu thong tin cu truoc khi cap nhat
+    // Luu du lieu cu
     const oldData = {
       title: task.title,
       description: task.description,
       status: task.status,
       priority: task.priority,
+      assignedTo: getUserId(task.assignedTo),
       startDate: task.startDate
         ? new Date(task.startDate).getTime()
         : null,
@@ -342,7 +323,6 @@ router.put('/:id', authMiddleware, async (req, res) => {
         : null
     };
 
-    // Cac truong duoc phep cap nhat
     const allowedFields = [
       'title',
       'description',
@@ -359,19 +339,15 @@ router.put('/:id', authMiddleware, async (req, res) => {
       }
     });
 
-    // Kiem tra ten cong viec
     if (typeof task.title !== 'string' || !task.title.trim()) {
       return res.status(400).json({
         message: 'Ten cong viec khong duoc de trong'
       });
     }
 
-    // Kiem tra trang thai
-    const validStatuses = [
-      'todo',
-      'in_progress',
-      'completed'
-    ];
+    task.title = task.title.trim();
+
+    const validStatuses = ['todo', 'in_progress', 'completed'];
 
     if (!validStatuses.includes(task.status)) {
       return res.status(400).json({
@@ -379,12 +355,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       });
     }
 
-    // Kiem tra muc do uu tien
-    const validPriorities = [
-      'low',
-      'medium',
-      'high'
-    ];
+    const validPriorities = ['low', 'medium', 'high'];
 
     if (!validPriorities.includes(task.priority)) {
       return res.status(400).json({
@@ -392,126 +363,122 @@ router.put('/:id', authMiddleware, async (req, res) => {
       });
     }
 
-    // Kiem tra nguoi duoc giao
-    if (task.assignedTo && !isValidId(task.assignedTo)) {
+    if (
+      task.assignedTo &&
+      !isValidId(getUserId(task.assignedTo))
+    ) {
       return res.status(400).json({
         message: 'ID nguoi duoc giao khong hop le'
       });
     }
 
-    // Luu thay doi vao MongoDB
     await task.save();
 
-    // Lay thong tin sau khi cap nhat
-    const result = await populateTask(
-      Task.findById(id)
-    );
+    const result = await populateTask(Task.findById(id));
 
-    // So sanh thong tin cu va moi
+    // So sanh cac thay doi
     const changes = [];
 
-    if (oldData.title !== task.title) {
-      changes.push({
-        field: 'title',
-        label: 'Tên công việc',
-        oldValue: oldData.title,
-        newValue: task.title
-      });
-    }
+    const addChange = (field, label, oldValue, newValue) => {
+      if (oldValue !== newValue) {
+        changes.push({
+          field,
+          label,
+          oldValue,
+          newValue
+        });
+      }
+    };
 
-    if (oldData.description !== task.description) {
-      changes.push({
-        field: 'description',
-        label: 'Mô tả công việc',
-        oldValue: oldData.description || 'Không có',
-        newValue: task.description || 'Không có'
-      });
-    }
+    addChange('title', 'Ten cong viec', oldData.title, task.title);
 
-    if (oldData.status !== task.status) {
-      changes.push({
-        field: 'status',
-        label: 'Trạng thái',
-        oldValue: oldData.status,
-        newValue: task.status
-      });
-    }
+    addChange(
+      'description',
+      'Mo ta cong viec',
+      oldData.description || 'Khong co',
+      task.description || 'Khong co'
+    );
 
-    if (oldData.priority !== task.priority) {
-      changes.push({
-        field: 'priority',
-        label: 'Mức độ ưu tiên',
-        oldValue: oldData.priority,
-        newValue: task.priority
-      });
-    }
+    addChange('status', 'Trang thai', oldData.status, task.status);
+
+    addChange(
+      'priority',
+      'Muc do uu tien',
+      oldData.priority,
+      task.priority
+    );
+
+    addChange(
+      'assignedTo',
+      'Nguoi phu trach',
+      oldData.assignedTo,
+      getUserId(task.assignedTo)
+    );
 
     const newStartDate = task.startDate
       ? new Date(task.startDate).getTime()
       : null;
 
-    if (oldData.startDate !== newStartDate) {
-      changes.push({
-        field: 'startDate',
-        label: 'Ngày bắt đầu',
-        oldValue: oldData.startDate,
-        newValue: newStartDate
-      });
-    }
+    addChange(
+      'startDate',
+      'Ngay bat dau',
+      oldData.startDate,
+      newStartDate
+    );
 
     const newDueDate = task.dueDate
       ? new Date(task.dueDate).getTime()
       : null;
 
-    if (oldData.dueDate !== newDueDate) {
-      changes.push({
-        field: 'dueDate',
-        label: 'Hạn hoàn thành',
-        oldValue: oldData.dueDate,
-        newValue: newDueDate
-      });
-    }
+    addChange(
+      'dueDate',
+      'Han hoan thanh',
+      oldData.dueDate,
+      newDueDate
+    );
 
-    // Neu co thay doi quan trong thi gui email
     let emailSentCount = 0;
     let emailTotal = 0;
 
     if (changes.length > 0) {
-      // Lay tat ca nguoi duoc giao va nguoi duoc chia se
       const recipientIds = [
+        ...(task.createdBy ? [task.createdBy] : []),
         ...(task.assignedUsers || []),
         ...(task.assignedTo ? [task.assignedTo] : []),
         ...(task.sharedWith || []),
-        ...(task.sharedPermissions || []).map(
-          item => item.user
-        )
+        ...(task.sharedPermissions || []).map(item => item.user)
       ]
         .filter(Boolean)
-        .map(item => getUserId(item));
+        .map(item => getUserId(item))
+        .filter(Boolean);
 
-      // Loai bo ID trung lap va nguoi dang cap nhat
       const uniqueRecipientIds = [
         ...new Set(recipientIds)
-      ].filter(
-        userId => userId !== String(req.userId)
+      ].filter(userId => userId !== String(req.userId));
+
+      console.log(
+        'Danh sach ID nguoi nhan email:',
+        uniqueRecipientIds
       );
 
-      // Tim email nguoi nhan
       const recipients = await User.find({
         _id: { $in: uniqueRecipientIds }
       }).select('name email');
 
       emailTotal = recipients.length;
 
-      // Gui email, loi gui email khong lam mat thay doi da luu
+      const isJustCompleted =
+        oldData.status !== 'completed' &&
+        task.status === 'completed';
+
       const emailResults = await Promise.allSettled(
-        recipients.map(user =>
-          sendTaskUpdateEmail(
-            user.email,
-            result,
-            changes
-          )
-        )
+        recipients.map(user => {
+          if (isJustCompleted) {
+            return sendTaskCompletedEmail(user.email, result);
+          }
+
+          return sendTaskUpdateEmail(user.email, result, changes);
+        })
       );
 
       emailSentCount = emailResults.filter(
@@ -527,10 +494,10 @@ router.put('/:id', authMiddleware, async (req, res) => {
 
     return res.status(200).json({
       message: 'Cap nhat cong viec thanh cong',
-      task: result,
       changes,
       emailSentCount,
-      emailTotal
+      emailTotal,
+      task: result
     });
 
   } catch (error) {
@@ -542,7 +509,6 @@ router.put('/:id', authMiddleware, async (req, res) => {
     });
   }
 });
-
 // TAO CONG VIEC MOI
 // POST /api/tasks
 // =====================================================
@@ -1017,76 +983,7 @@ router.post('/:id/accept', authMiddleware, async (req, res) => {
 
 
 
-// =====================================================
-// CAP NHAT CONG VIEC
-// PUT /api/tasks/:id
-// =====================================================
-router.put('/:id', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
 
-    if (!isValidId(id)) {
-      return res.status(400).json({
-        message: 'ID cong viec khong hop le'
-      });
-    }
-
-    const task = await Task.findById(id);
-
-    if (!task) {
-      return res.status(404).json({
-        message: 'Khong tim thay cong viec'
-      });
-    }
-
-    if (String(task.createdBy) !== String(req.userId)) {
-      return res.status(403).json({
-        message: 'Chi nguoi tao moi duoc cap nhat cong viec'
-      });
-    }
-
-    const allowedFields = [
-      'title',
-      'description',
-      'assignedTo',
-      'status',
-      'priority',
-      'startDate',
-      'dueDate'
-    ];
-
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        task[field] = req.body[field];
-      }
-    });
-
-    if (
-      task.assignedTo &&
-      !isValidId(task.assignedTo)
-    ) {
-      return res.status(400).json({
-        message: 'ID nguoi duoc giao khong hop le'
-      });
-    }
-
-    await task.save();
-
-    const result = await populateTask(
-      Task.findById(id)
-    );
-
-    return res.status(200).json({
-      message: 'Cap nhat cong viec thanh cong',
-      task: result
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: 'Loi cap nhat cong viec',
-      error: error.message
-    });
-  }
-});
 // =====================================================
 // XOA CONG VIEC
 // DELETE /api/tasks/:id
