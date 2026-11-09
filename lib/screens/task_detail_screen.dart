@@ -261,14 +261,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-
   Widget _buildPeopleSection() {
     final task = widget.task;
 
     // Danh sách người được giao
     final assignedMembers = <TaskMember>[];
 
-    // Thêm người phụ trách chính
     if (task.assignedTo.isNotEmpty) {
       assignedMembers.add(
         TaskMember(
@@ -279,7 +277,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       );
     }
 
-    // Thêm những người được giao khác, tránh trùng ID
+    // Tránh thêm trùng người phụ trách chính
     for (final member in task.assignedUsers) {
       if (member.id.isNotEmpty &&
           !assignedMembers.any((item) => item.id == member.id)) {
@@ -287,15 +285,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       }
     }
 
-    // Danh sách người được chia sẻ
     final sharedMembers = _sharedMembers;
 
-    // Widget hiển thị từng thành viên
+    // Widget hiển thị thành viên
     Widget memberTile(
         TaskMember member, {
           required IconData icon,
           required Color color,
           String? subtitle,
+          VoidCallback? onTap,
+          Widget? trailing,
         }) {
       final displayName = member.name.trim().isNotEmpty
           ? member.name
@@ -309,7 +308,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         ),
         title: Text(
           displayName,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         subtitle: Text(
           subtitle ??
@@ -317,6 +318,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ? member.email
                   : 'ID: ${member.id}'),
         ),
+        onTap: onTap,
+        trailing: trailing,
       );
     }
 
@@ -332,7 +335,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           children: [
             const Row(
               children: [
-                Icon(Icons.people_alt_outlined, color: Colors.blue),
+                Icon(
+                  Icons.people_alt_outlined,
+                  color: Colors.blue,
+                ),
                 SizedBox(width: 8),
                 Text(
                   'Thành viên công việc',
@@ -384,11 +390,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             if (sharedMembers.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('Chưa chia sẻ công việc với ai'),
+                child: Text(
+                  'Chưa chia sẻ công việc với ai.\n'
+                      'Nhấn nút Chia sẻ công việc bên dưới để thêm thành viên.',
+                ),
               )
             else
               ...sharedMembers.map((member) {
                 final email = member.email.trim();
+                final isRevoking =
+                    _revokingEmail == email.toLowerCase();
 
                 return Column(
                   children: [
@@ -396,17 +407,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       member,
                       icon: Icons.share,
                       color: Colors.deepPurple,
-                    ),
-
-                    if (email.isNotEmpty)
-                      Row(
+                      subtitle: email.isNotEmpty ? email : 'Chưa có email',
+                      onTap: email.isNotEmpty
+                          ? () => _changeSharePermission(email)
+                          : null,
+                      trailing: email.isEmpty
+                          ? null
+                          : Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Spacer(),
-
-                          // Nút thu hồi quyền
+                          IconButton(
+                            tooltip: 'Thay đổi quyền Viewer/Editor',
+                            icon: const Icon(
+                              Icons.edit_outlined,
+                              color: Colors.blue,
+                            ),
+                            onPressed: _revokingEmail != null
+                                ? null
+                                : () => _changeSharePermission(email),
+                          ),
                           IconButton(
                             tooltip: 'Thu hồi quyền',
-                            icon: _revokingEmail == email.toLowerCase()
+                            icon: isRevoking
                                 ? const SizedBox(
                               width: 20,
                               height: 20,
@@ -420,26 +442,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             ),
                             onPressed: _revokingEmail != null
                                 ? null
-                                : () {
-                              _revokeShareAccess(email);
-                            },
-                          ),
-
-                          // Nút thay đổi quyền Viewer / Editor
-                          IconButton(
-                            tooltip: 'Thay đổi quyền',
-                            icon: const Icon(
-                              Icons.edit_outlined,
-                              color: Colors.blue,
-                            ),
-                            onPressed: _revokingEmail != null
-                                ? null
-                                : () {
-                              _changeSharePermission(email);
-                            },
+                                : () => _revokeShareAccess(email),
                           ),
                         ],
                       ),
+                    ),
+                    const Divider(height: 1),
                   ],
                 );
               }),
