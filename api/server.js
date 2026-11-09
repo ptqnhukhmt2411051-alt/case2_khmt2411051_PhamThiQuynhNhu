@@ -1,4 +1,7 @@
 require('dotenv').config();
+const {
+  startTaskReminderScheduler
+} = require('./services/taskReminder');
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -21,16 +24,17 @@ app.get('/', (req, res) => {
     message: 'Task Manager API is running!',
   });
 });
-
 async function startServer() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('Ket noi MongoDB thanh cong!');
 
-    const port = process.env.PORT || 3000;
+    const PORT = process.env.PORT || 3000;
 
-    app.listen(port, '0.0.0.0', () => {
-      console.log(`Backend dang chay tai port ${port}`);
+    app.listen(PORT, () => {
+      console.log(`Backend dang chay tai port ${PORT}`);
+
+      startTaskReminderScheduler();
     });
   } catch (error) {
     console.error('Loi khoi dong backend:', error.message);
@@ -39,4 +43,3 @@ async function startServer() {
 }
 
 startServer();
-

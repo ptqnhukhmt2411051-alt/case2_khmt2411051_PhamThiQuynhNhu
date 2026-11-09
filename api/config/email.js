@@ -240,6 +240,66 @@ const sendTaskCompletedEmail = async (recipientEmail, task) => {
     return false;
   }
 };
+// =====================================================
+// GUI EMAIL NHAC VIEC TRUOC HAN
+// =====================================================
+const sendTaskReminderEmail = async (email, task) => {
+  try {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
+      throw new Error('Thieu cau hinh email trong file .env');
+    }
+
+    if (!email || !task || !task.dueDate) {
+      throw new Error('Thieu email nguoi nhan hoac han cong viec');
+    }
+
+    const dueDate = new Date(task.dueDate);
+
+    const formattedDueDate = dueDate.toLocaleString('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+
+    const mailOptions = {
+      from: '"Task Manager" <' + process.env.EMAIL_USER + '>',
+      to: email,
+      subject: '[Task Manager] Nhac nho cong viec sap den han',
+      text: [
+        'Xin chao!',
+        '',
+        'He thong Task Manager thong bao cong viec cua ban sap den han hoan thanh.',
+        '',
+        'Ten cong viec: ' + (task.title || 'Chua co ten'),
+        'Mo ta: ' + (task.description || 'Khong co mo ta'),
+        'Han hoan thanh: ' + formattedDueDate,
+        '',
+        'Vui long kiem tra va hoan thanh cong viec dung han.',
+        '',
+        'Tran trong,',
+        'Task Manager'
+      ].join('\n')
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+
+    console.log(
+      'Da gui email nhac viec den ' + email +
+      '. Message ID: ' + info.messageId
+    );
+
+    return true;
+  } catch (error) {
+    console.error(
+      'Loi gui email nhac viec den ' + email + ':',
+      error.message
+    );
+    return false;
+  }
+};
 
 // =====================================================
 // XUAT CAC HAM DE task.js SU DUNG
@@ -249,4 +309,5 @@ module.exports = {
   sendShareInvitationEmail,
   sendTaskUpdateEmail,
   sendTaskCompletedEmail,
+  sendTaskReminderEmail
 };

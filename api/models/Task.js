@@ -82,7 +82,18 @@ const taskSchema = new mongoose.Schema(
       default: null
     },
 
+ startDate: {
+      type: Date,
+      default: null
+    },
+
     dueDate: {
+      type: Date,
+      default: null
+    },
+
+    // Luu ngay han da gui email nhac viec
+    reminderSentForDueDate: {
       type: Date,
       default: null
     }
