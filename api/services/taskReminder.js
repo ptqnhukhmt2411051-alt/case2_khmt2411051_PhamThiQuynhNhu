@@ -1,4 +1,3 @@
-
 const cron = require('node-cron');
 
 const Task = require('../models/Task');
@@ -13,7 +12,9 @@ const getUserId = (value) => {
   return String(value?._id ?? value);
 };
 
-// Gui email nhac viec
+// =====================================================
+// KIEM TRA VA GUI EMAIL NHAC VIEC
+// =====================================================
 const checkTaskReminders = async () => {
   try {
     const now = new Date();
@@ -34,7 +35,7 @@ const checkTaskReminders = async () => {
     });
 
     for (const task of tasks) {
-      // Neu da nhac cho dung han nay thi bo qua
+      // Kiem tra da nhac cho han nay chua
       const alreadyReminded =
         task.reminderSentForDueDate &&
         new Date(task.reminderSentForDueDate).getTime() ===
@@ -53,12 +54,15 @@ const checkTaskReminders = async () => {
         .filter(Boolean)
         .map(item => getUserId(item));
 
-      // Loai bo ID trung lap
       const uniqueRecipientIds = [
         ...new Set(recipientIds)
       ];
 
       if (uniqueRecipientIds.length === 0) {
+        console.log(
+          'Cong viec chua co nguoi nhan email:',
+          task.title
+        );
         continue;
       }
 
@@ -69,11 +73,15 @@ const checkTaskReminders = async () => {
       }).select('name email');
 
       let allEmailsSent = true;
+      let attemptedCount = 0;
 
       for (const user of recipients) {
         if (!user.email) {
+          allEmailsSent = false;
           continue;
         }
+
+        attemptedCount++;
 
         const sent = await sendTaskReminderEmail(
           user.email,
@@ -85,18 +93,24 @@ const checkTaskReminders = async () => {
         }
       }
 
-      // Chi danh dau da nhac khi cac email gui thanh cong
-      if (allEmailsSent) {
+      // Chi danh dau da nhac khi co it nhat mot email
+      // duoc thu gui va tat ca cac email deu thanh cong
+      if (attemptedCount > 0 && allEmailsSent) {
         task.reminderSentForDueDate = task.dueDate;
 
         await task.save();
 
         console.log(
-          `Da nhac viec thanh cong: ${task.title}`
+          'Da nhac viec thanh cong:',
+          task.title
+        );
+      } else {
+        console.log(
+          'Nhac viec chua hoan tat, se thu lai o lan kiem tra sau:',
+          task.title
         );
       }
     }
-
   } catch (error) {
     console.error(
       'LOI KIEM TRA NHAC VIEC:',
@@ -105,14 +119,21 @@ const checkTaskReminders = async () => {
   }
 };
 
-// Chay kiem tra moi 15 phut
+// =====================================================
+// KHOI DONG LICH NHAC VIEC MOI 15 PHUT
+// =====================================================
 const startTaskReminderScheduler = () => {
   cron.schedule('*/15 * * * *', () => {
-    console.log('Dang kiem tra cac cong viec sap den han...');
+    console.log(
+      'Dang kiem tra cac cong viec sap den han...'
+    );
+
     checkTaskReminders();
   });
 
-  console.log('Da khoi dong lich nhac viec moi 15 phut');
+  console.log(
+    'Da khoi dong lich nhac viec moi 15 phut'
+  );
 };
 
 module.exports = {
