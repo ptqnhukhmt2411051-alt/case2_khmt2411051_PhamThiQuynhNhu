@@ -33,6 +33,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   late String _selectedStatus;
   late String _selectedPriority;
 
+// Giá trị đã được lưu thành công trên server.
+  late String _savedStatus;
+  late String _savedPriority;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +53,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     _selectedPriority = validPriorities.contains(widget.task.priority)
         ? widget.task.priority
         : 'medium';
+    _savedStatus = _selectedStatus;
+    _savedPriority = _selectedPriority;
   }
 
   String _statusText(String status) {
@@ -93,6 +99,194 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       default:
         return Colors.orange;
     }
+  }
+
+  // Hiển thị lịch sử hoạt động của công việc.
+  Future<void> _viewTaskActivities() async {
+    final activitiesFuture =
+    _taskService.getTaskActivities(widget.task.id);
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery
+                .of(context)
+                .size
+                .height * 0.75,
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.history, color: Colors.blue, size: 26),
+                      SizedBox(width: 10),
+                      Text(
+                        'Lịch sử hoạt động',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: FutureBuilder<List<dynamic>>(
+                    future: activitiesFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Text(
+                              'Không thể tải lịch sử hoạt động:\n${snapshot
+                                  .error}',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        );
+                      }
+
+                      final activities = snapshot.data ?? [];
+
+                      if (activities.isEmpty) {
+                        return const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.history,
+                                size: 52,
+                                color: Colors.grey,
+                              ),
+                              SizedBox(height: 12),
+                              Text('Chưa có hoạt động nào được ghi nhận'),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: activities.length,
+                        itemBuilder: (context, index) {
+                          final item = Map<String, dynamic>.from(
+                            activities[index] as Map,
+                          );
+
+                          final actor = item['actor'] is Map
+                              ? Map<String, dynamic>.from(item['actor'])
+                              : <String, dynamic>{};
+
+                          final action =
+                              item['description']?.toString() ??
+                                  item['action']?.toString() ??
+                                  'Có hoạt động mới';
+
+                          final actorName =
+                              actor['name']?.toString() ?? 'Người dùng';
+
+                          final createdAt =
+                          DateTime.tryParse(
+                            item['createdAt']?.toString() ?? '',
+                          )?.toLocal();
+
+                          final dateText = createdAt == null
+                              ? 'Không rõ thời gian'
+                              : '${createdAt.day.toString().padLeft(2, '0')}/'
+                              '${createdAt.month.toString().padLeft(2, '0')}/'
+                              '${createdAt.year} '
+                              '${createdAt.hour.toString().padLeft(2, '0')}:'
+                              '${createdAt.minute.toString().padLeft(2, '0')}';
+
+                          return IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Column(
+                                  children: [
+                                    const CircleAvatar(
+                                      radius: 17,
+                                      backgroundColor: Color(0xFFE3F2FD),
+                                      child: Icon(
+                                        Icons.history,
+                                        color: Colors.blue,
+                                        size: 19,
+                                      ),
+                                    ),
+                                    if (index != activities.length - 1)
+                                      Expanded(
+                                        child: Container(
+                                          width: 2,
+                                          color: Colors.blue.shade100,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(
+                                      bottom: 20,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          action,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                          'Người thực hiện: $actorName',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade700,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          dateText,
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _editTask() async {
@@ -174,6 +368,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       );
     }
   }
+
   // Hàm thu hồi quyền truy cập
   // Hàm thu hồi quyền truy cập
   Future<void> _revokeShareAccess(String email) async {
@@ -192,26 +387,27 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Thu hồi quyền truy cập'),
-        content: Text(
-          'Bạn có chắc muốn thu hồi quyền của $normalizedEmail không?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+      builder: (dialogContext) =>
+          AlertDialog(
+            title: const Text('Thu hồi quyền truy cập'),
+            content: Text(
+              'Bạn có chắc muốn thu hồi quyền của $normalizedEmail không?',
             ),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Thu hồi'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Thu hồi'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (confirm != true || !mounted) return;
@@ -253,7 +449,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Thu hồi quyền thất bại: ${e.toString().replaceFirst('Exception: ', '')}',
+            'Thu hồi quyền thất bại: ${e.toString().replaceFirst(
+                'Exception: ', '')}',
           ),
           backgroundColor: Colors.red,
         ),
@@ -291,13 +488,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final sharedMembers = _sharedMembers;
 
     // Widget hiển thị từng thành viên
-    Widget memberTile(
-        TaskMember member, {
-          required IconData icon,
-          required Color color,
-          String? subtitle,
-        }) {
-      final displayName = member.name.trim().isNotEmpty
+    Widget memberTile(TaskMember member, {
+      required IconData icon,
+      required Color color,
+      String? subtitle,
+    }) {
+      final displayName = member.name
+          .trim()
+          .isNotEmpty
           ? member.name
           : 'Người dùng';
 
@@ -361,14 +559,15 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               )
             else
               ...assignedMembers.map(
-                    (member) => memberTile(
-                  member,
-                  icon: Icons.assignment_ind,
-                  color: Colors.blue,
-                  subtitle: member.id == task.assignedTo
-                      ? 'Người phụ trách chính'
-                      : null,
-                ),
+                    (member) =>
+                    memberTile(
+                      member,
+                      icon: Icons.assignment_ind,
+                      color: Colors.blue,
+                      subtitle: member.id == task.assignedTo
+                          ? 'Người phụ trách chính'
+                          : null,
+                    ),
               ),
 
             const Divider(height: 28),
@@ -448,7 +647,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ),
     );
   }
-
 
 
   Future<void> _changeSharePermission(String email) async {
@@ -539,11 +737,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
 
-
   Future<void> _updateStatus() async {
-    if (_selectedStatus == widget.task.status) {
+    if (_selectedStatus == _savedStatus) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Trạng thái chưa thay đổi')),
+        const SnackBar(
+          content: Text('Trạng thái chưa thay đổi'),
+        ),
       );
       return;
     }
@@ -560,14 +759,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
       if (!mounted) return;
 
+      setState(() {
+        _savedStatus = _selectedStatus;
+        _isUpdatingStatus = false;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cập nhật trạng thái thành công!'),
           backgroundColor: Colors.green,
         ),
       );
-
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
 
@@ -585,7 +787,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _updatePriority() async {
-    if (_selectedPriority == widget.task.priority) {
+    if (_selectedPriority == _savedPriority) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Mức độ ưu tiên chưa thay đổi'),
@@ -606,14 +808,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
       if (!mounted) return;
 
+      setState(() {
+        _savedPriority = _selectedPriority;
+        _isUpdatingPriority = false;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cập nhật mức độ ưu tiên thành công!'),
           backgroundColor: Colors.green,
         ),
       );
-
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
 
@@ -628,15 +833,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         ),
       );
     }
-  }
-
-  String _formatDate(DateTime? date) {
-    if (date == null) return 'Chưa thiết lập';
-
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-
-    return '$day/$month/${date.year}';
   }
 
   // Chia sẻ công việc cho nhiều người bằng email.
@@ -654,7 +850,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final input = result['emails'] ?? '';
     final permission = result['permission'] ?? 'viewer';
 
-    if (input.trim().isEmpty) {
+    if (input
+        .trim()
+        .isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Vui lòng nhập email người nhận'),
@@ -1047,6 +1245,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ),
     );
   }
+  // Định dạng ngày tháng
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return 'Chưa thiết lập';
+    }
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+
+    return '$day/$month/${date.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1080,7 +1289,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Thẻ tên và mô tả công việc
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
@@ -1134,7 +1342,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
             const SizedBox(height: 16),
 
-            // Thẻ thông tin công việc
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
@@ -1173,14 +1380,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ),
                     _buildCurrentValue(
                       label: 'Mức độ ưu tiên',
-                      value: _priorityText(task.priority),
-                      color: _priorityColor(task.priority),
+                      value: _priorityText(_savedPriority),
+                      color: _priorityColor(_savedPriority),
                       icon: Icons.flag,
                     ),
                     _buildCurrentValue(
                       label: 'Trạng thái hiện tại',
-                      value: _statusText(task.status),
-                      color: _statusColor(task.status),
+                      value: _statusText(_savedStatus),
+                      color: _statusColor(_savedStatus),
                       icon: Icons.check_circle,
                     ),
                   ],
@@ -1190,99 +1397,120 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
             const SizedBox(height: 18),
 
-            // Cập nhật trạng thái
             _buildStatusSection(),
 
             const SizedBox(height: 16),
 
-            // Cập nhật mức độ ưu tiên
             _buildPrioritySection(),
 
             const SizedBox(height: 20),
 
-            // Danh sách người được giao và người được chia sẻ
             _buildPeopleSection(),
+
+            const SizedBox(height: 12),
+
+// Lịch sử hoạt động
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: _viewTaskActivities,
+                icon: const Icon(Icons.history),
+                label: const Text(
+                  'Lịch sử hoạt động',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.deepPurple,
+                  side: const BorderSide(
+                    color: Colors.deepPurple,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
 
             const SizedBox(height: 20),
 
-            // Khu vực các nút chức năng
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+// Hai nút Sửa và Xóa
+            Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed:
-                        _isDeleting ? null : _editTask,
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Chỉnh sửa'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 15,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _editTask,
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Sửa'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 15,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-
-                    const SizedBox(width: 12),
-
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed:
-                        _isDeleting ? null : _deleteTask,
-                        icon: const Icon(Icons.delete),
-                        label: const Text('Xóa'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 15,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(width: 12),
 
-                // Nút chia sẻ công việc
-                OutlinedButton.icon(
-                  onPressed: _isSharing ? null : _shareTask,
-                  icon: _isSharing
-                      ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  )
-                      : const Icon(Icons.share),
-                  label: Text(
-                    _isSharing
-                        ? 'Đang chia sẻ...'
-                        : 'Chia sẻ công việc cho nhiều người',
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.blue,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 15,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isDeleting ? null : _deleteTask,
+                    icon: const Icon(Icons.delete),
+                    label: const Text('Xóa'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 15,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
                 ),
               ],
+            ),
+
+            const SizedBox(height: 12),
+
+// Nút chia sẻ công việc
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isSharing ? null : _shareTask,
+                icon: _isSharing
+                    ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                  ),
+                )
+                    : const Icon(Icons.share),
+                label: Text(
+                  _isSharing
+                      ? 'Đang chia sẻ...'
+                      : 'Chia sẻ công việc cho nhiều người',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.blue,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 15,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -1291,16 +1519,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 }
 
+
 // =====================================================
 // WIDGET HỘP THOẠI CHIA SẺ CÔNG VIỆC
 // =====================================================
 
 class _ShareTaskDialog extends StatefulWidget {
-  const _ShareTaskDialog({super.key});
+  const _ShareTaskDialog();
 
   @override
-  State<_ShareTaskDialog> createState() =>
-      _ShareTaskDialogState();
+  State<_ShareTaskDialog> createState() => _ShareTaskDialogState();
 }
 
 // =====================================================
@@ -1326,7 +1554,6 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
       ),
-
       title: const Row(
         children: [
           Icon(Icons.share, color: Colors.blue),
@@ -1336,7 +1563,6 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
           ),
         ],
       ),
-
       content: SizedBox(
         width: 400,
         child: Column(
@@ -1347,7 +1573,6 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
               'Nhập email của những người bạn muốn chia sẻ công việc.',
               style: TextStyle(fontSize: 14),
             ),
-
             const SizedBox(height: 12),
 
             TextField(
@@ -1374,9 +1599,7 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
             ),
 
             const SizedBox(height: 20),
-
             const Divider(),
-
             const SizedBox(height: 8),
 
             const Text(
@@ -1389,7 +1612,6 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
 
             const SizedBox(height: 10),
 
-            // Nhóm lựa chọn quyền truy cập
             RadioGroup<String>(
               groupValue: _selectedPermission,
               onChanged: (String? value) {
@@ -1401,7 +1623,6 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
               },
               child: Column(
                 children: [
-                  // Quyền Viewer
                   RadioListTile<String>(
                     value: 'viewer',
                     contentPadding: EdgeInsets.zero,
@@ -1424,7 +1645,6 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
 
                   const Divider(height: 8),
 
-                  // Quyền Editor
                   RadioListTile<String>(
                     value: 'editor',
                     contentPadding: EdgeInsets.zero,
@@ -1450,7 +1670,6 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
           ],
         ),
       ),
-
       actions: [
         TextButton(
           onPressed: () {

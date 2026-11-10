@@ -63,10 +63,9 @@ class TaskService {
 
       final tasks = decodedData
           .map<Task>(
-            (json) =>
-            Task.fromJson(
-              Map<String, dynamic>.from(json),
-            ),
+            (json) => Task.fromJson(
+          Map<String, dynamic>.from(json),
+        ),
       )
           .toList();
 
@@ -112,19 +111,30 @@ class TaskService {
         body: jsonEncode(data),
       );
 
+      print('========== CREATE TASK ==========');
+      print('HTTP STATUS: ${response.statusCode}');
+      print('HTTP BODY: ${response.body}');
+      print('=================================');
+
       final responseData = _decodeResponse(response);
 
       if (response.statusCode == 201 ||
           response.statusCode == 200) {
-        if (responseData is Map &&
-            responseData['task'] is Map) {
-          return Task.fromJson(
-            Map<String, dynamic>.from(responseData['task']),
-          );
+        if (responseData is Map) {
+          final taskJson = responseData['task'] ??
+              responseData['data'] ??
+              responseData;
+
+          if (taskJson is Map &&
+              (taskJson['_id'] != null || taskJson['id'] != null)) {
+            return Task.fromJson(
+              Map<String, dynamic>.from(taskJson),
+            );
+          }
         }
 
         throw Exception(
-          'Backend đã thêm công việc nhưng không trả về dữ liệu task.',
+          'Backend trả về dữ liệu không đúng định dạng: ${response.body}',
         );
       }
 
@@ -134,13 +144,16 @@ class TaskService {
             : 'Không thể thêm công việc',
       );
     } catch (e) {
+      print('CREATE TASK ERROR: $e');
       throw Exception('Lỗi thêm công việc: $e');
     }
   }
 
   // Cập nhật công việc.
-  Future<Task> updateTask(String taskId,
-      Map<String, dynamic> data,) async {
+  Future<Task> updateTask(
+      String taskId,
+      Map<String, dynamic> data,
+      ) async {
     try {
       final response = await http.put(
         Uri.parse('$baseUrl/api/tasks/$taskId'),
@@ -172,8 +185,10 @@ class TaskService {
   }
 
   // Cập nhật trạng thái công việc.
-  Future<Task> updateTaskStatus(String taskId,
-      String newStatus,) async {
+  Future<Task> updateTaskStatus(
+      String taskId,
+      String newStatus,
+      ) async {
     return updateTask(taskId, {
       'status': newStatus,
     });
@@ -237,7 +252,7 @@ class TaskService {
     }
   }
 
-  // C: Chia sẻ công việc cho nhiều người bằng email.
+  // C3: Chia sẻ công việc cho nhiều người bằng email,
   // đồng thời cấp quyền viewer hoặc editor.
   Future<void> shareTask({
     required String taskId,
@@ -312,7 +327,7 @@ class TaskService {
     }
   }
 
-  // Thay đổi quyền viewer / editor
+  // Thay đổi quyền viewer / editor.
   Future<void> updateSharePermission({
     required String taskId,
     required String email,
@@ -338,7 +353,7 @@ class TaskService {
     }
   }
 
-  // Thu hồi quyền truy cập của người được chia sẻ
+  // Thu hồi quyền truy cập của người được chia sẻ.
   Future<void> revokeShareAccess({
     required String taskId,
     required String email,
@@ -385,5 +400,58 @@ class TaskService {
     }
   }
 
+  // Lấy lịch sử hoạt động của công việc.
+  Future<List<dynamic>> getTaskActivities(String taskId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/tasks/$taskId/activities'),
+        headers: await _getHeaders(),
+      );
 
+      final data = _decodeResponse(response);
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          data is Map
+              ? data['message'] ?? 'Không thể tải lịch sử hoạt động'
+              : 'Không thể tải lịch sử hoạt động',
+        );
+      }
+
+      if (data is! List) {
+        throw Exception('Dữ liệu lịch sử hoạt động không hợp lệ');
+      }
+
+      return data;
+    } catch (e) {
+      throw Exception('Lỗi tải lịch sử hoạt động: $e');
+    }
+  }
+  // Lấy lịch sử công việc đã hoàn thành.
+  Future<List<dynamic>> getTaskHistory() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/tasks/history'),
+        headers: await _getHeaders(),
+      );
+
+      final data = _decodeResponse(response);
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          data is Map
+              ? data['message'] ?? 'Không thể tải lịch sử công việc'
+              : 'Không thể tải lịch sử công việc',
+        );
+      }
+
+      if (data is! List) {
+        throw Exception('Dữ liệu lịch sử công việc không hợp lệ');
+      }
+
+      return data;
+    } catch (e) {
+      throw Exception('Lỗi tải lịch sử công việc: $e');
+    }
+  }
 }

@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import '../auth_service.dart';
 import '../models/task_model.dart';
 import '../services/task_service.dart';
+
 import 'task_detail_screen.dart';
 import 'task_form_screen.dart';
+import 'notification_screen.dart';
+import 'task_history_screen.dart';
 
 class TaskScreen extends StatefulWidget {
   const TaskScreen({super.key});
@@ -590,7 +593,7 @@ class _TaskScreenState extends State<TaskScreen>
       ),
     );
   }
-// Hiển thị danh sách công việc theo từng tab
+  // Hiển thị danh sách công việc theo từng tab
   Widget _buildTaskList(String type) {
     if (_isLoadingTasks) {
       return const Center(
@@ -616,10 +619,26 @@ class _TaskScreenState extends State<TaskScreen>
 
     final tasks = _getSortedTasks(type);
 
+    // Lấy danh sách người phụ trách chính và người được giao
+    final assigneeIds = <String>{
+      for (final task in _tasks)
+        if (task.assignedTo.isNotEmpty) task.assignedTo,
+      for (final task in _tasks)
+        for (final member in task.assignedUsers)
+          if (member.id.isNotEmpty) member.id,
+    };
+
+    final assigneeValue =
+    _selectedAssignee == 'all' ||
+        assigneeIds.contains(_selectedAssignee)
+        ? _selectedAssignee
+        : 'all';
+
     return Column(
       children: [
         // Thống kê tiến độ
         _buildProgressSummary(),
+
         // Ô tìm kiếm
         Padding(
           padding: const EdgeInsets.all(12),
@@ -727,22 +746,18 @@ class _TaskScreenState extends State<TaskScreen>
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButtonFormField<String>(
-            initialValue: _selectedAssignee,
+            initialValue: assigneeValue,
             decoration: const InputDecoration(
               labelText: 'Lọc theo người phụ trách',
               border: OutlineInputBorder(),
             ),
             items: [
-              const DropdownMenuItem(
+              const DropdownMenuItem<String>(
                 value: 'all',
                 child: Text('Tất cả người phụ trách'),
               ),
-              ..._tasks
-                  .where((task) => task.assignedTo.isNotEmpty)
-                  .map((task) => task.assignedTo)
-                  .toSet()
-                  .map(
-                    (id) => DropdownMenuItem(
+              ...assigneeIds.map(
+                    (id) => DropdownMenuItem<String>(
                   value: id,
                   child: Text(
                     id,
@@ -830,24 +845,54 @@ class _TaskScreenState extends State<TaskScreen>
     );
   }
 
-
+  // Giao diện chính của màn hình quản lý công việc
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Quản lý công việc'),
         actions: [
+          // Nút thông báo
+          IconButton(
+            tooltip: 'Thông báo',
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NotificationScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Lịch sử công việc',
+            icon: const Icon(Icons.history),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TaskHistoryScreen(),
+                ),
+              );
+            },
+          ),
+
+          // Nút tải lại
           IconButton(
             tooltip: 'Tải lại',
-            onPressed: _isLoadingTasks ? null : _loadTasks,
             icon: const Icon(Icons.refresh),
+            onPressed: _isLoadingTasks ? null : _loadTasks,
           ),
+
+          // Nút thêm công việc
           IconButton(
             tooltip: 'Thêm công việc',
-            onPressed: _isLoadingUser ? null : _openAddTaskScreen,
             icon: const Icon(Icons.add),
+            onPressed: _isLoadingUser ? null : _openAddTaskScreen,
           ),
         ],
+
+        // Các tab công việc
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
@@ -856,24 +901,26 @@ class _TaskScreenState extends State<TaskScreen>
           }).toList(),
         ),
       ),
+
+      // Nội dung từng tab
       body: _isLoadingUser
           ? const Center(
         child: CircularProgressIndicator(),
       )
           : TabBarView(
         controller: _tabController,
-        children: _types.map(_buildTaskList).toList(),
+        children: _types.map((type) {
+          return _buildTaskList(type);
+        }).toList(),
       ),
     );
   }
 
-
-
-
-    @override
-    void dispose() {
-      _tabController.dispose();
-      _searchController.dispose();
-      super.dispose();
-    }
+  // Giải phóng bộ nhớ
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
 }
