@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/task_model.dart';
 import '../services/task_service.dart';
-
+import '../auth_service.dart';
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
 
@@ -15,11 +15,51 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   final TaskService _taskService = TaskService();
 
   List<Task> _tasks = [];
+  String _currentUserId = '';
 
   bool _isLoading = true;
   String? _errorMessage;
 
   int get _totalTasks => _tasks.length;
+  // Lấy ID từ String hoặc TaskMember
+  String _getMemberId(dynamic value) {
+    if (value == null) return '';
+
+    if (value is String) {
+      return value;
+    }
+
+    if (value is TaskMember) {
+      return value.id;
+    }
+
+    return '';
+  }
+
+// Công việc được giao cho người dùng hiện tại
+  int get _assignedCount {
+    if (_currentUserId.isEmpty) return 0;
+
+    return _tasks.where((task) {
+      final primaryId = _getMemberId(task.assignedTo);
+
+      final assignedIds = task.assignedUsers
+          .map((member) => _getMemberId(member))
+          .toList();
+
+      return primaryId == _currentUserId ||
+          assignedIds.contains(_currentUserId);
+    }).length;
+  }
+
+// Công việc người dùng hiện tại phụ trách chính
+  int get _responsibleCount {
+    if (_currentUserId.isEmpty) return 0;
+
+    return _tasks.where((task) {
+      return _getMemberId(task.assignedTo) == _currentUserId;
+    }).length;
+  }
 
   int get _todoCount =>
       _tasks.where((task) => task.status == 'todo').length;
@@ -41,7 +81,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     _loadStatistics();
   }
 
-  // Lấy danh sách công việc từ Backend.
   Future<void> _loadStatistics() async {
     setState(() {
       _isLoading = true;
@@ -49,11 +88,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     });
 
     try {
+      final userId = await AuthService().getCurrentUserId();
       final tasks = await _taskService.getTasks('all');
 
       if (!mounted) return;
 
       setState(() {
+        _currentUserId = userId.toString();
         _tasks = tasks;
         _isLoading = false;
       });
@@ -235,6 +276,33 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             count: _completedCount,
             color: Colors.green,
             icon: Icons.check_circle_outline,
+          ),
+          const SizedBox(height: 20),
+
+          const Text(
+            'Thống kê phân công công việc',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildSummaryCard(
+            title: 'Công việc được giao',
+            count: _assignedCount,
+            color: Colors.orange,
+            icon: Icons.assignment_ind,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildSummaryCard(
+            title: 'Công việc đang phụ trách',
+            count: _responsibleCount,
+            color: Colors.blue,
+            icon: Icons.person_pin,
           ),
 
           const SizedBox(height: 16),
