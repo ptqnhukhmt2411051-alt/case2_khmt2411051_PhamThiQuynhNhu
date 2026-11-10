@@ -1,23 +1,26 @@
 require('dotenv').config();
-const {
-  startTaskReminderScheduler
-} = require('./services/taskReminder');
 
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 
-const app = express();
+const {
+  startTaskReminderScheduler
+} = require('./services/taskReminder');
 
-// Import routes sau khi đã nạp .env
 const taskRoutes = require('./routes/task');
 const authRoutes = require('./routes/auth');
+const notificationRoutes = require('./routes/notification');
+
+const app = express();
 
 app.use(cors());
 app.use(express.json());
 
 app.use('/api/tasks', taskRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/notifications', notificationRoutes);
+
 
 app.get('/', (req, res) => {
   res.json({

@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import '../auth_service.dart';
 import '../models/task_model.dart';
 import '../services/task_service.dart';
+import '../services/notification_service.dart';
+
 import 'task_detail_screen.dart';
 import 'task_form_screen.dart';
-
+import 'notification_screen.dart';
 class TaskScreen extends StatefulWidget {
   const TaskScreen({super.key});
 
@@ -14,12 +16,19 @@ class TaskScreen extends StatefulWidget {
   State<TaskScreen> createState() => _TaskScreenState();
 }
 
+
+
 class _TaskScreenState extends State<TaskScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
+
   final TaskService _taskService = TaskService();
   final AuthService _authService = AuthService();
+  final NotificationService _notificationService =
+        NotificationService();
+
+  int _unreadNotificationCount = 0;
 
   final List<String> _types = [
     'created',
@@ -66,6 +75,43 @@ class _TaskScreenState extends State<TaskScreen>
     );
 
     _initializeScreen();
+    _loadUnreadNotificationCount();
+  }
+
+  Future<void> _loadUnreadNotificationCount() async {
+    try {
+      final count =
+      await _notificationService.getUnreadCount();
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadNotificationCount = count;
+      });
+    } catch (e) {
+      debugPrint('Lỗi tải số thông báo: $e');
+    }
+  }
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NotificationScreen(
+          onOpenTask: (taskId) async {
+            final task = await _taskService.getTaskById(taskId);
+
+            if (!mounted) return;
+
+            await _openTaskDetail(task);
+          },
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    await _loadUnreadNotificationCount();
+    await _loadTasks();
   }
 
   // Khởi tạo màn hình
@@ -838,6 +884,43 @@ class _TaskScreenState extends State<TaskScreen>
         title: const Text('Quản lý công việc'),
         actions: [
           IconButton(
+            tooltip: 'Thông báo',
+            onPressed: _openNotifications,
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined),
+                if (_unreadNotificationCount > 0)
+                  Positioned(
+                    right: -6,
+                    top: -6,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(
+                        minWidth: 17,
+                        minHeight: 17,
+                      ),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        _unreadNotificationCount > 99
+                            ? '99+'
+                            : '$_unreadNotificationCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
             tooltip: 'Tải lại',
             onPressed: _isLoadingTasks ? null : _loadTasks,
             icon: const Icon(Icons.refresh),
@@ -870,10 +953,10 @@ class _TaskScreenState extends State<TaskScreen>
 
 
 
-    @override
-    void dispose() {
-      _tabController.dispose();
-      _searchController.dispose();
-      super.dispose();
-    }
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
 }

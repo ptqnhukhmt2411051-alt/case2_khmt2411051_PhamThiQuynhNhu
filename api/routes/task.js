@@ -4,6 +4,9 @@ const {
   sendTaskUpdateEmail,
   sendTaskCompletedEmail,
 } = require('../config/email');
+const {
+  createTaskNotifications,
+} = require('../utils/notificationHelper');
 
 
 const express = require('express');
@@ -12,6 +15,7 @@ const router = express.Router();
 
 const Task = require('../models/Task');
 const User = require('../models/User');
+
 const authMiddleware = require('../middleware/authMiddleware');
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -72,6 +76,7 @@ const getTaskPermission = (task, userId) => {
 
   return 'viewer';
 };
+
 // =====================================================
 // TIM TAI KHOAN THEO EMAIL
 // GET /api/tasks/users/search
@@ -240,8 +245,18 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
     }
 
     await task.save();
+    await createTaskNotifications({
+      recipientIds: newlySharedUsers.map((user) => user._id),
+      senderId: req.userId,
+      taskId: task._id,
+      type: 'share',
+      title: 'Bạn được chia sẻ công việc',
+      message: `Bạn vừa được chia sẻ công việc "${task.title}"`,
+    });
 
     const result = await populateTask(Task.findById(id));
+
+
 
     // Gui email moi cho nguoi duoc chia se lan dau
     const emailResults = await Promise.allSettled(
@@ -455,6 +470,24 @@ router.put('/:id', authMiddleware, async (req, res) => {
       const uniqueRecipientIds = [
         ...new Set(recipientIds)
       ].filter(userId => userId !== String(req.userId));
+      // Xac dinh loai thong bao
+      const isJustCompleted =
+        oldData.status !== 'completed' &&
+        task.status === 'completed';
+
+      // Tao thong bao cho cac thanh vien lien quan
+      await createTaskNotifications({
+        recipientIds: uniqueRecipientIds,
+        senderId: req.userId,
+        taskId: task._id,
+        type: isJustCompleted ? 'completed' : 'update',
+        title: isJustCompleted
+            ? 'Công việc đã hoàn thành'
+            : 'Công việc vừa được cập nhật',
+        message: isJustCompleted
+            ? `Công việc "${task.title}" đã được hoàn thành`
+            : `Công việc "${task.title}" vừa có thay đổi`,
+      });
 
       console.log(
         'Danh sach ID nguoi nhan email:',
@@ -467,9 +500,6 @@ router.put('/:id', authMiddleware, async (req, res) => {
 
       emailTotal = recipients.length;
 
-      const isJustCompleted =
-        oldData.status !== 'completed' &&
-        task.status === 'completed';
 
       const emailResults = await Promise.allSettled(
         recipients.map(user => {
@@ -509,6 +539,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
     });
   }
 });
+
 // TAO CONG VIEC MOI
 // POST /api/tasks
 // =====================================================
@@ -586,6 +617,18 @@ router.post('/', authMiddleware, async (req, res) => {
     });
 
     await task.save();
+
+    // Tao thong bao neu cong viec moi duoc giao cho nguoi khac
+    if (assignedTo) {
+      await createTaskNotifications({
+        recipientIds: [assignedTo],
+        senderId: req.userId,
+        taskId: task._id,
+        type: 'assignment',
+        title: 'Bạn được giao công việc mới',
+        message: `Bạn vừa được giao công việc "${task.title}"`,
+      });
+    }
 
     // Lay thong tin cong viec kem tai khoan
     const result = await populateTask(
@@ -885,6 +928,14 @@ router.put('/:id/assign', authMiddleware, async (req, res) => {
     task.acceptedBy = [];
 
     await task.save();
+    await createTaskNotifications({
+      recipientIds: newlyAssignedUsers.map((user) => user._id),
+      senderId: req.userId,
+      taskId: task._id,
+      type: 'assignment',
+      title: 'Bạn được giao công việc mới',
+      message: `Bạn vừa được giao công việc "${task.title}"`,
+    });
 
     // Lay thong tin cong viec sau khi luu
     const result = await populateTask(

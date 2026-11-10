@@ -384,6 +384,20 @@ class TaskService {
       rethrow;
     }
   }
+  Future<Task> getTaskById(String taskId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/tasks/$taskId'),
+      headers: await _getHeaders(),
+    );
+
+    final data = _decodeResponse(response);
+
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Dữ liệu công việc không hợp lệ');
+    }
+
+    return Task.fromJson(data);
+  }
 
 
 }
