@@ -74,6 +74,54 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     if (_totalTasks == 0) return 0;
     return _completedCount / _totalTasks;
   }
+  // Chuyển ngày về đầu ngày để so sánh theo ngày
+  DateTime _dateOnly(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+// Công việc sắp đến hạn trong 3 ngày tới
+  List<Task> get _upcomingTasks {
+    final today = _dateOnly(DateTime.now());
+    final lastDay = today.add(const Duration(days: 3));
+
+    return _tasks.where((task) {
+      final dueDate = task.dueDate;
+
+      if (dueDate == null || task.status == 'completed') {
+        return false;
+      }
+
+      final date = _dateOnly(dueDate);
+
+      return !date.isBefore(today) && !date.isAfter(lastDay);
+    }).toList()
+      ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+
+  }
+
+
+// Công việc đã quá hạn
+  List<Task> get _overdueTasks {
+    final today = _dateOnly(DateTime.now());
+
+    return _tasks.where((task) {
+      final dueDate = task.dueDate;
+
+      if (dueDate == null || task.status == 'completed') {
+        return false;
+      }
+
+      return _dateOnly(dueDate).isBefore(today);
+    }).toList()
+      ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+  }
+
+// Định dạng ngày/tháng/năm
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
 
   @override
   void initState() {
@@ -203,6 +251,117 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       ),
     );
   }
+    // Hiển thị một công việc trong danh sách hạn
+    Widget _buildDeadlineTaskItem(
+        Task task, {
+          required Color color,
+          required String label,
+          required IconData icon,
+        }) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: color.withValues(alpha: 0.12),
+            child: Icon(icon, color: color),
+          ),
+          title: Text(
+            task.title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Hạn hoàn thành: ${_formatDate(task.dueDate!)}',
+            ),
+          ),
+          trailing: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      );
+    }
+
+// Hiển thị danh sách công việc theo hạn
+    Widget _buildDeadlineSection({
+      required String title,
+      required List<Task> tasks,
+      required Color color,
+      required IconData icon,
+      required String label,
+      required String emptyMessage,
+    }) {
+      return Card(
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: color.withValues(alpha: 0.12),
+                    child: Text(
+                      tasks.length.toString(),
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              if (tasks.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                    child: Text(
+                      emptyMessage,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                ...tasks.map(
+                      (task) => _buildDeadlineTaskItem(
+                    task,
+                    color: color,
+                    label: label,
+                    icon: icon,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+
+
 
   Widget _buildStatisticsContent() {
     return RefreshIndicator(
@@ -264,6 +423,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             icon: Icons.pending_actions,
           ),
 
+
           _buildSummaryCard(
             title: 'Đang thực hiện',
             count: _inProgressCount,
@@ -304,6 +464,29 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             color: Colors.blue,
             icon: Icons.person_pin,
           ),
+          // Công việc sắp đến hạn
+          _buildDeadlineSection(
+            title: 'Công việc sắp đến hạn',
+            tasks: _upcomingTasks,
+            color: Colors.orange,
+            icon: Icons.schedule,
+            label: 'Sắp đến hạn',
+            emptyMessage: 'Không có công việc sắp đến hạn',
+          ),
+
+          const SizedBox(height: 12),
+
+// Công việc đã quá hạn
+          _buildDeadlineSection(
+            title: 'Công việc đã quá hạn',
+            tasks: _overdueTasks,
+            color: Colors.red,
+            icon: Icons.warning_amber,
+            label: 'Quá hạn',
+            emptyMessage: 'Không có công việc quá hạn',
+          ),
+
+          const SizedBox(height: 16),
 
           const SizedBox(height: 16),
 
