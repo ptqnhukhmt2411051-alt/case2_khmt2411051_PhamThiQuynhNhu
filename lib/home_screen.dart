@@ -5,6 +5,7 @@ import 'auth_service.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'screens/task_screen.dart';
+import 'screens/statistics_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -103,6 +104,24 @@ class HomeScreen extends StatelessWidget {
                   },
                   icon: const Icon(Icons.person),
                   label: const Text('Thông tin cá nhân'),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const StatisticsScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.bar_chart),
+                  label: const Text('Thống kê công việc'),
                 ),
               ),
 
