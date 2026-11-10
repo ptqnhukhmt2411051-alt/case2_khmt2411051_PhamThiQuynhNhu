@@ -190,6 +190,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   Future<void> _saveTask() async {
+    // Không cho phép gửi yêu cầu lưu nhiều lần.
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
     final assignmentError = _validateAssignment();

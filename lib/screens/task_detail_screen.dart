@@ -25,6 +25,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   bool _isUpdatingStatus = false;
   bool _isUpdatingPriority = false;
   bool _isSharing = false;
+  String? _changingPermissionEmail;
 
   late List<TaskMember> _sharedMembers;
   String? _revokingEmail;
@@ -151,10 +152,29 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         return Center(
                           child: Padding(
                             padding: const EdgeInsets.all(20),
-                            child: Text(
-                              'Không thể tải lịch sử hoạt động:\n${snapshot
-                                  .error}',
-                              textAlign: TextAlign.center,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.error_outline,
+                                  color: Colors.red,
+                                  size: 45,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Không thể tải lịch sử hoạt động:\n${snapshot.error}',
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _viewTaskActivities();
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Thử tải lại'),
+                                ),
+                              ],
                             ),
                           ),
                         );
@@ -627,11 +647,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           // Nút thay đổi quyền Viewer / Editor
                           IconButton(
                             tooltip: 'Thay đổi quyền',
-                            icon: const Icon(
+                            icon: _changingPermissionEmail == email.toLowerCase()
+                                ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                                : const Icon(
                               Icons.edit_outlined,
                               color: Colors.blue,
                             ),
-                            onPressed: _revokingEmail != null
+                            onPressed: _revokingEmail != null ||
+                                _changingPermissionEmail != null
                                 ? null
                                 : () {
                               _changeSharePermission(email);
@@ -650,6 +679,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
 
   Future<void> _changeSharePermission(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
+
+    if (normalizedEmail.isEmpty ||
+        _changingPermissionEmail != null ||
+        _revokingEmail != null) {
+      return;
+    }
+
     String selectedPermission = 'viewer';
 
     final permission = await showDialog<String>(
@@ -705,20 +742,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       },
     );
 
-    if (permission == null) return;
+    if (permission == null || !mounted) return;
+
+    setState(() {
+      _changingPermissionEmail = normalizedEmail;
+    });
 
     try {
       await _taskService.updateSharePermission(
         taskId: widget.task.id,
-        email: email,
+        email: normalizedEmail,
         permission: permission,
       );
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã thay đổi quyền truy cập thành công'),
+        SnackBar(
+          content: Text(
+            permission == 'viewer'
+                ? 'Đã đổi quyền thành Viewer - Chỉ xem'
+                : 'Đã đổi quyền thành Editor - Chỉnh sửa',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -728,11 +773,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Không thể thay đổi quyền: $e',
+            'Không thể thay đổi quyền: '
+                '${e.toString().replaceFirst('Exception: ', '')}',
           ),
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _changingPermissionEmail = null;
+        });
+      }
     }
   }
 
@@ -1463,8 +1515,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _isDeleting ? null : _deleteTask,
-                    icon: const Icon(Icons.delete),
-                    label: const Text('Xóa'),
+                    icon: _isDeleting
+                        ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                        : const Icon(Icons.delete),
+                    label: Text(_isDeleting ? 'Đang xóa...' : 'Xóa'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,

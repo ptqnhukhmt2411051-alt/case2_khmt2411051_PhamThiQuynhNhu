@@ -1,4 +1,9 @@
-
+const {
+  sendAssignmentEmail,
+  sendShareInvitationEmail,
+  sendTaskUpdateEmail,
+  sendTaskCompletedEmail
+} = require('../config/email');
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
@@ -215,82 +220,75 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
       task.sharedPermissions = [];
     }
 
-    let addedCount = 0;
+   let addedCount = 0;
+   const newlySharedRecipients = [];
 
-    for (const user of recipients) {
-      const userId = String(user._id);
+   for (const user of recipients) {
+     const userId = String(user._id);
 
-      const alreadyShared = task.sharedWith.some(
-        item => getUserId(item) === userId
-      );
+     const alreadyShared = task.sharedWith.some(
+       item => getUserId(item) === userId
+     );
 
-      if (!alreadyShared) {
-        task.sharedWith.push(user._id);
-        addedCount++;
-      }
+     if (!alreadyShared) {
+       task.sharedWith.push(user._id);
+       addedCount++;
+       newlySharedRecipients.push(user);
+     }
 
-      const existingPermission = task.sharedPermissions.find(
-        item => getUserId(item.user) === userId
-      );
+     const existingPermission = task.sharedPermissions.find(
+       item => getUserId(item.user) === userId
+     );
 
-      if (existingPermission) {
-        existingPermission.permission = permission;
-      } else {
-        task.sharedPermissions.push({
-          user: user._id,
-          permission
-        });
-      }
-    }
+     if (existingPermission) {
+       existingPermission.permission = permission;
+     } else {
+       task.sharedPermissions.push({
+         user: user._id,
+         permission
+       });
+     }
+   }
 
-    await task.save();
-    await logTaskActivity({
-      task,
-      actor: req.userId,
-      action: 'revoke_share',
-      description: `Đã thu hồi quyền chia sẻ của ${user.email}`,
-      details: {
-        email: user.email
-      }
-    });
-    await logTaskActivity({
-      task,
-      actor: req.userId,
-      action: 'share',
-      description: `Đã chia sẻ công việc cho ${recipients.length} người`,
-      details: {
-        emails: recipients.map(user => user.email),
-        permission
-      }
-    });
-    await logTaskActivity({
-      task,
-      actor: req.userId,
-      action: 'create',
-      description: 'Đã tạo công việc'
-    });
 
-    const updatedTask = await populateTask(
-      Task.findById(id)
-    );
 
-    return res.status(200).json({
-      message: 'Chia se cong viec thanh cong',
-      task: updatedTask,
-      addedCount,
-      sharedCount: task.sharedWith.length
-    });
+   await task.save();
 
-  } catch (error) {
-    console.error('Loi chia se cong viec:', error);
+   await Promise.allSettled(
+     newlySharedRecipients.map(user =>
+       sendShareInvitationEmail(user.email, task, permission)
+     )
+   );
 
-    return res.status(500).json({
-      message: 'Loi chia se cong viec',
-      error: error.message
-    });
-  }
-});
+   await logTaskActivity({
+     task,
+     actor: req.userId,
+     action: 'share',
+     description: `Đã chia sẻ công việc cho ${recipients.length} người`,
+     details: {
+       emails: recipients.map(user => user.email),
+       permission
+     }
+   });
 
+   const updatedTask = await populateTask(Task.findById(id));
+
+     return res.status(200).json({
+         message: 'Chia se cong viec thanh cong',
+         task: updatedTask,
+         addedCount,
+         sharedCount: task.sharedWith.length
+       });
+
+     } catch (error) {
+       console.error('LOI CHIA SE CONG VIEC:', error);
+
+       return res.status(500).json({
+         message: 'Loi chia se cong viec',
+         error: error.message
+       });
+     }
+   });
 
 // =====================================================
 // CAP NHAT QUYEN CHIA SE
@@ -464,6 +462,7 @@ router.get('/', authMiddleware, async (req, res) => {
       .populate('assignedUsers', 'name email')
       .populate('acceptedBy', 'name email')
       .populate('sharedWith', 'name email')
+      .populate('sharedPermissions.user', 'name email')
       .sort({ createdAt: -1 });
 
     return res.status(200).json(tasks);
@@ -534,61 +533,6 @@ router.get('/:id', authMiddleware, async (req, res) => {
     });
   }
 });
-// =====================================================
-// TAO CONG VIEC MOI
-// POST /api/tasks
-// =====================================================
-router.post('/', authMiddleware, async (req, res) => {
-  try {
-    const {
-      title,
-      description,
-      status,
-      priority,
-      startDate,
-      dueDate
-    } = req.body;
-
-    if (typeof title !== 'string' || !title.trim()) {
-      return res.status(400).json({
-        message: 'Vui long nhap ten cong viec'
-      });
-    }
-
-    const task = await Task.create({
-      title: title.trim(),
-      description: description || '',
-      createdBy: req.userId,
-      assignedTo: null,
-      assignedUsers: [],
-      acceptedBy: [],
-      sharedWith: [],
-      sharedPermissions: [],
-      status: status || 'todo',
-      priority: priority || 'medium',
-      startDate: startDate || null,
-      dueDate: dueDate || null
-    });
-
-    const result = await populateTask(
-      Task.findById(task._id)
-    );
-
-    return res.status(201).json({
-      message: 'Tao cong viec thanh cong',
-      task: result
-    });
-
-  } catch (error) {
-    console.error('LOI TAO CONG VIEC:', error);
-
-    return res.status(500).json({
-      message: 'Loi tao cong viec',
-      error: error.message
-    });
-  }
-});
-
 
 // =====================================================
 // C2 - CHI DINH NGUOI PHU TRACH CHINH
@@ -655,9 +599,17 @@ router.put('/:id/primary-assignee', authMiddleware, async (req, res) => {
       });
     }
 
+    const oldPrimaryAssigneeId = getUserId(task.assignedTo);
+
     task.assignedTo = user._id;
 
     await task.save();
+    // Chỉ gửi email nếu người phụ trách chính thực sự thay đổi.
+    if (oldPrimaryAssigneeId !== String(user._id)) {
+      await Promise.allSettled([
+        sendAssignmentEmail(user.email, task)
+      ]);
+    }
     await logTaskActivity({
       task,
       actor: req.userId,
@@ -787,6 +739,12 @@ router.put('/:id/assign', authMiddleware, async (req, res) => {
     task.acceptedBy = [];
 
     await task.save();
+    // Gửi email thông báo giao công việc cho những người được giao.
+    await Promise.allSettled(
+      users.map(user =>
+        sendAssignmentEmail(user.email, task)
+      )
+    );
     await logTaskActivity({
       task,
       actor: req.userId,
@@ -939,6 +897,48 @@ router.put('/:id', authMiddleware, async (req, res) => {
       }
 
       await task.save();
+      // Gửi email khi công việc vừa chuyển sang trạng thái Hoàn thành.
+      if (oldStatus !== 'completed' && task.status === 'completed') {
+        try {
+          // Lấy ID người tạo, người được giao và người được chia sẻ.
+          const recipientIds = [
+            task.createdBy,
+            task.assignedTo,
+            ...(task.assignedUsers || []),
+            ...(task.sharedWith || []),
+            ...(task.sharedPermissions || []).map(item => item.user)
+          ]
+            .filter(Boolean)
+            .map(getUserId)
+            .filter(id => id && id !== 'null' && id !== 'undefined');
+
+          // Loại bỏ ID trùng nhau.
+          const uniqueRecipientIds = [...new Set(recipientIds)];
+
+          // Lấy thông tin email của những người nhận.
+          const recipients = await User.find({
+            _id: { $in: uniqueRecipientIds }
+          }).select('name email');
+
+          // Gửi email cho tất cả người nhận.
+          const emailResults = await Promise.allSettled(
+            recipients
+              .filter(user => user.email)
+              .map(user => sendTaskCompletedEmail(user.email, task))
+          );
+
+          const failedCount = emailResults.filter(
+            result => result.status === 'rejected'
+          ).length;
+
+          console.log(
+            `Email hoàn thành công việc: ${recipients.length - failedCount}/${recipients.length} gửi thành công.`
+          );
+        } catch (emailError) {
+          // Lỗi gửi email không làm mất kết quả cập nhật công việc.
+          console.error('Loi gui email hoan thanh cong viec:', emailError);
+        }
+      }
       if (oldStatus !== task.status) {
         await logTaskActivity({
           task,
@@ -1114,16 +1114,7 @@ router.delete('/:id/share', authMiddleware, async (req, res) => {
         email: user.email
       }
     });
-    await logTaskActivity({
-      task,
-      actor: req.userId,
-      action: 'share',
-      description: `Đã chia sẻ công việc cho ${recipients.length} người với quyền ${permission === 'viewer' ? 'Viewer' : 'Editor'}`,
-      details: {
-        emails: recipients.map(user => user.email),
-        permission
-      }
-    });
+
 
     return res.status(200).json({
       message: 'Đã thu hồi quyền truy cập thành công'

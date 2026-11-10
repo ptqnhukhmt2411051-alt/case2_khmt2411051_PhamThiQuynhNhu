@@ -15,11 +15,15 @@ class TaskScreen extends StatefulWidget {
 
   @override
   State<TaskScreen> createState() => _TaskScreenState();
+
 }
 
+
 class _TaskScreenState extends State<TaskScreen>
+
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+
 
   final TaskService _taskService = TaskService();
   final AuthService _authService = AuthService();
@@ -74,6 +78,12 @@ class _TaskScreenState extends State<TaskScreen>
   // Khởi tạo màn hình
   Future<void> _initializeScreen() async {
     await _loadCurrentUser();
+
+    if (!mounted) return;
+
+    // Không tải danh sách nếu chưa lấy được tài khoản hiện tại.
+    if (_currentUserId.isEmpty) return;
+
     await _loadTasks();
   }
 
@@ -107,6 +117,15 @@ class _TaskScreenState extends State<TaskScreen>
   Future<void> _loadTasks() async {
     if (!mounted) return;
 
+    if (_currentUserId.isEmpty) {
+      setState(() {
+        _isLoadingTasks = false;
+        _errorMessage =
+        'Không lấy được thông tin tài khoản. Vui lòng đăng nhập lại.';
+      });
+      return;
+    }
+
     setState(() {
       _isLoadingTasks = true;
       _errorMessage = null;
@@ -120,21 +139,20 @@ class _TaskScreenState extends State<TaskScreen>
       setState(() {
         _tasks = tasks;
         _isLoadingTasks = false;
+        _errorMessage = null;
       });
-
-      debugPrint('Tổng số công việc: ${_tasks.length}');
-      debugPrint('ID người dùng: $_currentUserId');
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
         _isLoadingTasks = false;
-        _errorMessage = 'Không thể tải công việc: $e';
+        _errorMessage = 'Không thể tải danh sách công việc: $e';
       });
 
-      debugPrint('Lỗi tải công việc: $e');
+      debugPrint('Lỗi tải danh sách công việc: $e');
     }
   }
+
 
   // Lọc công việc theo từng danh sách
   List<Task> _getTasksByType(String type) {
@@ -595,24 +613,39 @@ class _TaskScreenState extends State<TaskScreen>
   }
   // Hiển thị danh sách công việc theo từng tab
   Widget _buildTaskList(String type) {
+
     if (_isLoadingTasks) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
 
+
     if (_errorMessage != null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(_errorMessage!),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _loadTasks,
-              child: const Text('Thử lại'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _isLoadingTasks ? null : _initializeScreen,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Thử tải lại'),
+              ),
+            ],
+          ),
         ),
       );
     }
